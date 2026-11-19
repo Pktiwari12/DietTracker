@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InformedDiet Admin Panel</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f7f4; color: #1b2a1e; margin: 0; padding: 24px; }
+    .container { max-width: 1080px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; background: #2E7D32; color: white; padding: 18px 24px; border-radius: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }
+    .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .metric { font-size: 28px; font-weight: 700; color: #2E7D32; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px; border-bottom: 1px solid #e3ece4; text-align: left; font-size: 14px; }
+    th { background: #e8f5e9; }
+    button { background: #2E7D32; color: white; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    input, select { padding: 8px; border: 1px solid #cdd8ce; border-radius: 8px; margin-right: 8px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1 style="margin:0;">InformedDiet Admin Panel</h1>
+        <small>Nutrition DB • YOLO Model Switch • Feedback & Analytics</small>
+      </div>
+      <div>
+        <input id="modelVer" placeholder="e.g. v2-indian-global" />
+        <button onclick="switchModel()">Switch YOLO Model</button>
+      </div>
+    </header>
+
+    <div class="grid" id="statsGrid"></div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h2>Add Food Item (English & Hindi)</h2>
+      <input id="name_en" placeholder="English Name" />
+      <input id="name_hi" placeholder="Hindi Name (हिंदी)" />
+      <input id="category" placeholder="Category (e.g. Whole grains)" value="Whole grains" />
+      <input id="kcal" type="number" placeholder="kcal / 100g" />
+      <input id="prot" type="number" placeholder="Protein / 100g" />
+      <input id="carbs" type="number" placeholder="Carbs / 100g" />
+      <input id="fat" type="number" placeholder="Fat / 100g" />
+      <button onclick="addFood()">Add Food</button>
+    </div>
+
+    <div class="card">
+      <h2>Nutrition Database</h2>
+      <table id="foodsTable">
+        <thead><tr><th>ID</th><th>English</th><th>Hindi</th><th>kcal/100g</th><th>Protein</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    async function loadAll() {
+      const stats = await (await fetch('/admin/stats')).json();
+      document.getElementById('modelVer').value = stats.active_yolo_model_version;
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="card"><div>Total Users</div><div class="metric">${stats.total_users}</div></div>
+        <div class="card"><div>Meals Logged</div><div class="metric">${stats.total_meals}</div></div>
+        <div class="card"><div>Avg YOLO Confidence</div><div class="metric">${(stats.avg_recognition_confidence*100).toFixed(0)}%</div></div>
+        <div class="card"><div>Active YOLO Model</div><div class="metric" style="font-size:18px;">${stats.active_yolo_model_version}</div></div>
+      `;
+      const foods = await (await fetch('/admin/foods')).json();
+      document.querySelector('#foodsTable tbody').innerHTML = foods.map(f => `
+        <tr>
+          <td>${f.id}</td><td>${f.name_en}</td><td>${f.name_hi}</td>
+          <td>${f.calories_per_100g}</td><td>${f.protein_per_100g}g</td>
+          <td>${f.is_active ? 'Active' : 'Disabled'}</td>
+          <td><button onclick="toggleFood(${f.id})">${f.is_active ? 'Disable' : 'Enable'}</button></td>
+        </tr>
+      `).join('');
+    }
+    async function switchModel() {
+      const v = document.getElementById('modelVer').value;
+      await fetch('/admin/model-version?version=' + encodeURIComponent(v), { method: 'PUT' });
+      loadAll();
+    }
+    async function toggleFood(id) {
+      await fetch(`/admin/foods/${id}/toggle`, { method: 'PUT' });
+      loadAll();
+    }
+    async function addFood() {
+      await fetch('/admin/foods', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name_en: document.getElementById('name_en').value,
+          name_hi: document.getElementById('name_hi').value,
+          category: document.getElementById('category').value,
+          calories_per_100g: Number(document.getElementById('kcal').value || 100),
+          protein_per_100g: Number(document.getElementById('prot').value || 5),
+          carbs_per_100g: Number(document.getElementById('carbs').value || 15),
+          fat_per_100g: Number(document.getElementById('fat').value || 2),
+          diet_tags: ['vegetarian'],
+          allergen_tags: []
+        })
+      });
+      loadAll();
+    }
+    loadAll();
+  </script>
+</body>
+</html>

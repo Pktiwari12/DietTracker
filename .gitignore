@@ -1,0 +1,56 @@
+# ================================
+# InformedDiet (DietTracker) .gitignore
+# Place this file in: C:\Users\sachi\DietTracker\.gitignore
+# ================================
+
+# --- Python / FastAPI Backend ---
+backend/venv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
+.env
+backend/.env
+backend/uploads/
+backend/runs/
+*.onnx
+*.pt
+
+# --- Node / React Native / Expo Mobile ---
+node_modules/
+mobile/node_modules/
+.expo/
+mobile/.expo/
+dist/
+web-build/
+npm-debug.*
+yarn-error.*
+*.tsbuildinfo
+
+# Native build folders (if generated via prebuild)
+mobile/android/
+mobile/ios/
+
+# Signing keys & credentials (NEVER commit to GitHub)
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.keystore
+*firebase-adminsdk*.json
+google-services.json
+
+# --- OS & Editor Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo

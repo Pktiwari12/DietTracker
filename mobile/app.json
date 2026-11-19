@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "InformedDiet",
+    "slug": "informed-diet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2E7D32"
+    },
+    "android": {
+      "package": "com.informeddiet.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2E7D32"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow InformedDiet to use your camera to photograph meals for instant nutrition tracking."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow InformedDiet to access your photos so you can upload meal images from your gallery."
+        }
+      ],
+      "expo-notifications",
+      "expo-asset"
+    ]
+  }
+}

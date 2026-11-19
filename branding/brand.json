@@ -1,0 +1,9 @@
+{
+  "appName": "InformedDiet",
+  "slug": "informed-diet",
+  "androidPackage": "com.informeddiet.app",
+  "primaryColor": "#2E7D32",
+  "primaryDarkColor": "#1B5E20",
+  "accentColor": "#C8E6C9",
+  "splashBackgroundColor": "#2E7D32"
+}
