@@ -1,9 +1,5 @@
 # InformedDiet (`DietTracker/` Workspace)
 
-Complete full-stack mobile application built from your **AI Diet Tracker App Blueprint** and **Developer Requirements Specification**, configured for **Expo Go on Android** so you can preview and test the app on your phone immediately.
-
----
-
 ## 1. Folder & File Placement (`DietTracker/`)
 
 Extract the provided zip archive directly into your existing `DietTracker` folder so it has the following structure:
@@ -11,7 +7,7 @@ Extract the provided zip archive directly into your existing `DietTracker` folde
 | Path inside `DietTracker/` | Purpose |
 | --- | --- |
 | `README.md` | Quick-start guide (this file) |
-| `branding/logo.png` | Your 1024×1024 InformedDiet logo |
+| `branding/logo.png` |1024×1024 InformedDiet logo |
 | `branding/app_icon_foreground.png` | Android adaptive launcher icon foreground (66% safe zone) |
 | `branding/app_icon_background.png` | Android adaptive launcher icon background (`#2E7D32`) |
 | `branding/brand.json` | Single source of truth for app name (`InformedDiet`) and brand colors |
@@ -28,10 +24,10 @@ Extract the provided zip archive directly into your existing `DietTracker` folde
 | `mobile/src/utils/` | Mifflin-St Jeor target calculator, IFCT+USDA bilingual food DB, What-To-Eat-Next engine, unit converter, PDF exporter |
 | `mobile/src/components/` | `CalorieRing`, `MacroBar`, `Charts` (4 pure-SVG charts), `BoundingBoxOverlay`, `CommonUI` |
 | `mobile/src/navigation/AppNavigator.tsx` | Auth → Onboarding → 5-Tab Bar (`Home`, `Food`, central Camera button, `Exercise`, `History`, `Reports`) |
-| `mobile/src/screens/` | All 20 screens from the Blueprint (`Splash`, `Welcome`, `Login`, `Register`, `Otp`, `ForgotPassword`, `Onboarding`, `GoalSummary`, `Home`, `Food`, `Camera`, `Analyzing`, `ReviewMeal`, `ManualSearch`, `Water`, `Weight`, `Exercise`, `History`, `Reports`, `Micronutrients`, `ProfileSettings`) |
+| `mobile/src/screens/` |(`Splash`, `Welcome`, `Login`, `Register`, `Otp`, `ForgotPassword`, `Onboarding`, `GoalSummary`, `Home`, `Food`, `Camera`, `Analyzing`, `ReviewMeal`, `ManualSearch`, `Water`, `Weight`, `Exercise`, `History`, `Reports`, `Micronutrients`, `ProfileSettings`) |
 | `backend/` | Python FastAPI server + SQLite/PostgreSQL models + YOLO service + Admin Panel |
 | `backend/app/main.py` | FastAPI server entrypoint |
-| `backend/app/models.py` | All 14+ database tables (Section 9) |
+| `backend/app/models.py` | All 14+ database tables |
 | `backend/app/routers/api_v1.py` | All `/v1/...` REST API endpoints (Section 10) |
 | `backend/app/routers/admin.py` | Section 12 Admin Panel backend & HTML dashboard (`/admin`) |
 | `backend/app/services/` | `target_calculator.py`, `nutrition_seed.py`, `yolo_service.py`, `suggestion_engine.py`, `pdf_exporter.py` |
@@ -99,25 +95,3 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 3. Reload Expo Go on your phone.
 
 ---
-
-## 4. How to Change the App Name, Logo, or Colors Later
-
-1. Replace any file inside `DietTracker/branding/` (`logo.png`, `app_icon_foreground.png`, `app_icon_background.png`) or edit `DietTracker/branding/brand.json`.
-2. Run:
-   ```bash
-   cd DietTracker/mobile
-   npm run apply-branding
-   ```
-3. Restart Expo with cache cleared: `npx expo start -c`.
-
----
-
-## 5. Connecting Real Custom-Trained YOLO Weights Later
-
-1. Prepare your Indian + Global food dataset YAML (see `backend/yolo_training/dataset_licences.md`).
-2. Train and export ONNX weights using `backend/yolo_training/train_yolo.py`:
-   ```bash
-   pip install ultralytics
-   python yolo_training/train_yolo.py --data food_dataset.yaml --model yolo11n.pt --version v1
-   ```
-3. Set `YOLO_WEIGHTS_PATH=/path/to/best.onnx` in `DietTracker/backend/.env` and restart the backend. The app automatically switches from fallback mode to real Ultralytics YOLO inference without any mobile app update.
