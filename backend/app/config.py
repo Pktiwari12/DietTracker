@@ -1,5 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
+from typing import Literal
 
 
 class Settings(BaseSettings):
@@ -15,6 +16,8 @@ class Settings(BaseSettings):
     vlm_mode: str = os.getenv("VLM_MODE", "demo_fallback")  # local_unsloth | remote_http | demo_fallback
     vlm_model_name: str = os.getenv("VLM_MODEL_NAME", "unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit")
     vlm_remote_url: str = os.getenv("VLM_REMOTE_URL", "")
+    vlm_remote_format: Literal["structured", "kaggle_answer"] = "structured"
+    vlm_remote_token: str = ""
     master_nutrition_csv: str = os.getenv(
         "MASTER_NUTRITION_CSV",
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "master_nutrition.csv"),

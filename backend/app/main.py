@@ -39,6 +39,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import re
+from time import perf_counter
+from uuid import uuid4
+
+from fastapi import Request
+from app.services.vlm_service import food_photo_request_id, logger as food_photo_logger
+
+@app.middleware("http")
+async def log_food_photo(request: Request, call_next):
+    if request.method != "POST" or request.url.path != "/api/identify-food":
+        return await call_next(request)
+
+    incoming_id = request.headers.get("X-Request-ID", "")
+    request_id = incoming_id if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", incoming_id) else uuid4().hex
+    token = food_photo_request_id.set(request_id)
+    started_at = perf_counter()
+    food_photo_logger.info(
+        "[%s] PHONE -> LOCAL POST /api/identify-food mode=%s",
+        request_id, settings.vlm_mode,
+    )
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        food_photo_logger.info(
+            "[%s] LOCAL -> PHONE status=%d elapsed_ms=%.0f",
+            request_id, response.status_code, (perf_counter() - started_at) * 1000,
+        )
+        return response
+    except Exception as exc:
+        food_photo_logger.error(
+            "[%s] LOCAL handler failed error=%s", request_id, type(exc).__name__,
+        )
+        raise
+    finally:
+        food_photo_request_id.reset(token)
+
+
 app.include_router(api_v1.router)
 app.include_router(vlm_nutrition.router)
 app.include_router(admin.router)

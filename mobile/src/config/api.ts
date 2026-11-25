@@ -1,11 +1,13 @@
 import { FoodItem, MealCategory, MealFoodEntry, VlmIdentifyResponse } from '../types';
 import { OFFLINE_FOODS } from '../utils/nutritionDb';
-
+import { fetch as expoFetch } from 'expo/fetch';
+import { File } from 'expo-file-system';
 /**
  * Set this to your PC's local Wi-Fi IPv4 address (e.g., 'http://192.168.1.15:8000')
  * so Expo Go on your Android phone can reach FastAPI (/api/identify-food & /api/calculate-nutrients).
  */
-export const API_BASE_URL = 'http://10.85.97.153:8000';
+// export const API_BASE_URL = 'http://10.85.97.153:8000';
+export const API_BASE_URL = 'http://192.168.1.3:8000';
 
 function confidenceLabelToNum(label?: string): number {
   const l = (label || 'high').toLowerCase();
@@ -18,36 +20,69 @@ function confidenceLabelToNum(label?: string): number {
  * Step 1: Send meal photo to POST /api/identify-food (Qwen3-VL-8B-Instruct).
  * Returns strict JSON: { image_scope, items: [{ name, confidence, visible_toppings }] }
  */
+
 export async function identifyFoodPhoto(
   photoUri: string,
   mealType: MealCategory
 ): Promise<{ detected: VlmIdentifyResponse; usedBackend: boolean }> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35000);
+  const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const url = `${API_BASE_URL}/api/identify-food`;
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 210_000);
 
+  try {
+    console.info(`[food-photo ${requestId}] PHONE -> LOCAL POST`, {
+      url,
+      mealType,
+      hasPhoto: Boolean(photoUri),
+    });
+    if (!photoUri) throw new Error('No photo URI from camera or gallery');
+
+    // const formData = new FormData();
+    // formData.append('meal_type', mealType);
+    // formData.append('photo', { uri: photoUri, name: 'meal.jpg', type: 'image/jpeg' } as any);
+    // const res = await fetch(url, {
+    //   method: 'POST',
+    //   headers: { 'X-Request-ID': requestId },
+    //   body: formData,
+    //   signal: controller.signal,
+    // });
     const formData = new FormData();
     formData.append('meal_type', mealType);
-    formData.append('photo', {
-      uri: photoUri,
-      name: 'meal.jpg',
-      type: 'image/jpeg',
-    } as any);
+    formData.append('photo', new File(photoUri));
 
-    const res = await fetch(`${API_BASE_URL}/api/identify-food`, {
+    const res = await expoFetch(url, {
       method: 'POST',
+      headers: { 'X-Request-ID': requestId },
       body: formData,
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
 
+    console.info(`[food-photo ${requestId}] LOCAL -> PHONE`, {
+      status: res.status,
+      backendRequestId: res.headers.get('X-Request-ID'),
+      elapsedMs: Date.now() - startedAt,
+    });
     if (res.ok) {
-      const data = await res.json();
+      const data: VlmIdentifyResponse = await res.json();
+      if (!Array.isArray(data?.items)) throw new Error('Response has no items array');
+      console.info(`[food-photo ${requestId}] Identification complete`, {
+        mode: data.vlm_mode,
+        foods: data.items.map((item) => item.name),
+      });
       return { detected: data, usedBackend: true };
     }
-  } catch {
-    // Offline / backend not reachable fallback
+  } catch (error) {
+    console.warn(`[food-photo ${requestId}] Identification failed`, {
+      timedOut: controller.signal.aborted,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    clearTimeout(timeoutId);
   }
+
+  console.warn(`[food-photo ${requestId}] Using preset foods`);
 
   // Offline fallback matching the exact Qwen3-VL JSON schema
   const fallbackPresets: Record<MealCategory, VlmIdentifyResponse> = {

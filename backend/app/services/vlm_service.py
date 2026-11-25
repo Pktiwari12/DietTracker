@@ -14,12 +14,24 @@ Supports 3 modes via backend/.env (VLM_MODE):
   2. remote_http    -> Forwards the uploaded photo to VLM_REMOTE_URL (e.g. Colab T4 GPU or cloud GPU server).
   3. demo_fallback  -> Returns realistic Qwen3-VL JSON locally on CPU so the full app + master_nutrition.csv can be tested immediately.
 """
+# for logs
+import logging
+from contextvars import ContextVar
+from time import perf_counter
+from urllib.parse import urlsplit
+
+import ast
+import re
 import hashlib
 import io
 import json
 from typing import Any, Dict, Tuple
 from PIL import Image
 from app.config import settings
+
+logger = logging.getLogger("uvicorn.error").getChild("food_photo")
+food_photo_request_id = ContextVar("food_photo_request_id", default="-")
+
 
 ANTI_LOOP_PROMPT = """Identify every distinct edible food or drink item in this image.
 
@@ -50,6 +62,48 @@ def parse_json(text: str) -> Tuple[Dict[str, Any], bool]:
             pass
     return {"raw_text": text, "image_scope": "single_item", "items": []}, False
 
+def _kaggle_answer_to_detection(answer: Any) -> Dict[str, Any]:
+    if isinstance(answer, str):
+        text = re.sub(
+            r"^<think>.*?</think>\s*",
+            "",
+            answer.strip(),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        fenced = re.search(
+            r"```(?:json\b)?\s*(\[.*?\])\s*```",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if fenced:
+            text = fenced.group(1)
+
+        if not text.startswith("["):
+            raise ValueError("Expected a list of food names in Kaggle's answer.")
+
+        try:
+            answer, _ = json.JSONDecoder().raw_decode(text)
+        except json.JSONDecodeError as exc:
+            if len(text) > 4096:
+                raise ValueError("Invalid Kaggle food list.") from exc
+            try:
+                answer = ast.literal_eval(text)
+            except (SyntaxError, ValueError, RecursionError) as error:
+                raise ValueError("Invalid Kaggle food list.") from error
+
+    if not isinstance(answer, list) or any(
+        not isinstance(name, str) for name in answer
+    ):
+        raise ValueError("Kaggle's answer must contain a list of food names.")
+
+    names = list(dict.fromkeys(name.strip() for name in answer if name.strip()))
+    return {
+        "image_scope": "single_item" if len(names) == 1 else "multi_item",
+        "items": [
+            {"name": name, "confidence": "medium", "visible_toppings": []}
+            for name in names
+        ],
+    }
 
 class Qwen3VLMService:
     def __init__(self):
@@ -120,14 +174,64 @@ class Qwen3VLMService:
     def _run_remote_http(self, image_bytes: bytes) -> Dict[str, Any]:
         import httpx
 
+        request_id = food_photo_request_id.get()
         url = settings.vlm_remote_url.strip()
         if not url:
-            raise ValueError("VLM_REMOTE_URL is empty in .env")
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, files={"photo": ("meal.jpg", image_bytes, "image/jpeg")})
-            resp.raise_for_status()
-            return resp.json()
+            raise ValueError("VLM_REMOTE_URL is empty")
 
+        target = urlsplit(url)
+        uses_kaggle_answer = settings.vlm_remote_format == "kaggle_answer"
+        field_name = "file" if uses_kaggle_answer else "photo"
+        # headers = {"X-Request-ID": request_id}
+        headers = {"X-Meal-Request-ID": request_id}
+        if settings.vlm_remote_token:
+            headers["Authorization"] = f"Bearer {settings.vlm_remote_token}"
+
+        timeout = httpx.Timeout(200.0 if uses_kaggle_answer else 60.0, connect=5.0)
+        started_at = perf_counter()
+        logger.info(
+            "[%s] LOCAL -> KAGGLE POST %s://%s%s multipart_field=%s photo_bytes=%d",
+            request_id, target.scheme, target.hostname, target.path or "/",
+            field_name, len(image_bytes),
+        )
+
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                response = client.post(
+                    url,
+                    headers=headers,
+                    files={field_name: ("meal.jpg", image_bytes, "image/jpeg")},
+                )
+        except httpx.RequestError as exc:
+            error_type = type(exc).__name__
+            logger.warning("[%s] KAGGLE connection failed error=%s", request_id, error_type)
+            raise RuntimeError(f"Remote model request failed ({error_type})") from None
+
+        logger.info(
+            "[%s] KAGGLE -> LOCAL status=%d content_type=%r body_bytes=%d elapsed_ms=%.0f",
+            request_id, response.status_code, response.headers.get("content-type"),
+            len(response.content), (perf_counter() - started_at) * 1000,
+        )
+        if not response.is_success:
+            raise RuntimeError(f"Remote model returned HTTP {response.status_code}")
+
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("The remote food service must return a JSON object")
+
+        result = (
+            _kaggle_answer_to_detection(payload.get("answer"))
+            if uses_kaggle_answer
+            else payload
+        )
+        items = result.get("items")
+        if not isinstance(items, list):
+            raise ValueError("The remote food service must return an items list")
+
+        names = [str(item.get("name", ""))[:100] for item in items[:12] if isinstance(item, dict)]
+        logger.info("[%s] KAGGLE parsed item_count=%d foods=%r", request_id, len(items), names)
+        return result
+    
     def _run_demo_fallback(self, image_bytes: bytes, meal_type: str) -> Dict[str, Any]:
         digest = int(hashlib.md5(image_bytes[:4096] or b"meal").hexdigest()[:8], 16)
         mt = (meal_type or "Lunch").lower()
