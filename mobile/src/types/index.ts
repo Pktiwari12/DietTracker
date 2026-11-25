@@ -17,7 +17,7 @@ export interface Micronutrients {
 }
 
 export interface FoodItem {
-  id: number;
+  id: number | string;
   name_en: string;
   name_hi: string;
   category: string;
@@ -31,26 +31,53 @@ export interface FoodItem {
   sugar_per_100g?: number;
   micronutrients: Micronutrients;
   serving_sizes: { label: string; grams: number }[];
+  default_unit_name?: string;
+  default_unit_grams?: number;
   grams_per_piece?: number;
   diet_tags: string[];
   allergen_tags: string[];
   source: string;
 }
 
+export interface VlmDetectedItem {
+  name: string;
+  confidence: 'high' | 'medium' | 'low';
+  visible_toppings: string[];
+}
+
+export interface VlmIdentifyResponse {
+  image_scope: 'single_item' | 'multi_item' | 'assortment';
+  items: VlmDetectedItem[];
+  vlm_mode?: string;
+  model_name?: string;
+}
+
 export interface MealFoodEntry {
   id: string;
-  food_id?: number;
+  food_id?: number | string;
+  input_name?: string;
   name_en: string;
   name_hi?: string;
   grams: number;
   estimated_grams?: number;
+  unit_type?: 'grams' | 'unit';
+  quantity_value?: number;
+  default_unit_name?: string;
+  default_unit_grams?: number;
+  weight_label?: string;
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
+  fiber_g?: number;
   micronutrients: Micronutrients;
   confidence: number;
+  confidence_label?: 'high' | 'medium' | 'low';
   is_low_confidence?: boolean;
+  is_topping?: boolean;
+  status?: 'matched' | 'unmatched';
+  match_method?: string;
+  source_db?: string;
   alternatives?: { food_id: number; name_en: string; name_hi: string }[];
   bbox?: [number, number, number, number];
   allergen_tags?: string[];
@@ -183,5 +210,5 @@ export interface UserSession {
   acceptedDisclaimer: boolean;
   emailOrPhone: string;
   token?: string;
-  planType: 'free' | 'premium'; // Prepared for future monetisation
+  planType: 'free' | 'premium';
 }

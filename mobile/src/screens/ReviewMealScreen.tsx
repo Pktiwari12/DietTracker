@@ -1,13 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { useTranslation } from '../i18n/useTranslation';
-import { BoundingBoxOverlay } from '../components/BoundingBoxOverlay';
 import { Card, PrimaryButton } from '../components/CommonUI';
 import { MealCategory, MealFoodEntry } from '../types';
-import { OFFLINE_FOODS } from '../utils/nutritionDb';
+import { calculateNutrientsFromBackend } from '../config/api';
 
 const CATS: MealCategory[] = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 
@@ -26,6 +35,9 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
 
   const [mealType, setMealType] = useState<MealCategory>(initMealType);
   const [items, setItems] = useState<MealFoodEntry[]>(initialItems);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+  const [rematching, setRematching] = useState(false);
   const [saveAsFav, setSaveAsFav] = useState(false);
 
   const totals = useMemo(() => {
@@ -43,51 +55,85 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
     return Array.from(set);
   }, [items]);
 
-  const adjustGrams = (id: string, delta: number) => {
+  const rescaleItem = (it: MealFoodEntry, newGrams: number, unitType: 'grams' | 'unit', qtyVal: number): MealFoodEntry => {
+    const safeGrams = Math.max(1, newGrams);
+    const ratio = safeGrams / Math.max(1, it.grams);
+    const unitName = it.default_unit_name || 'serving / bowl';
+    return {
+      ...it,
+      grams: Math.round(safeGrams * 10) / 10,
+      unit_type: unitType,
+      quantity_value: qtyVal,
+      weight_label: unitType === 'unit' ? `${qtyVal} x ${unitName} (${Math.round(safeGrams)}g)` : `${Math.round(safeGrams)}g`,
+      calories: Math.round(it.calories * ratio),
+      protein: Math.round(it.protein * ratio * 10) / 10,
+      carbs: Math.round(it.carbs * ratio * 10) / 10,
+      fat: Math.round(it.fat * ratio * 10) / 10,
+      was_edited_by_user: true,
+    };
+  };
+
+  const toggleUnitMode = (id: string, targetMode: 'grams' | 'unit') => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.id !== id) return it;
-        const newGrams = Math.max(10, it.grams + delta);
-        const ratio = newGrams / Math.max(1, it.grams);
-        return {
-          ...it,
-          grams: Math.round(newGrams),
-          calories: Math.round(it.calories * ratio),
-          protein: Math.round(it.protein * ratio * 10) / 10,
-          carbs: Math.round(it.carbs * ratio * 10) / 10,
-          fat: Math.round(it.fat * ratio * 10) / 10,
-          was_edited_by_user: true,
-        };
+        const unitGrams = it.default_unit_grams || 150;
+        if (targetMode === 'unit') {
+          const defaultQty = 1;
+          return rescaleItem(it, defaultQty * unitGrams, 'unit', defaultQty);
+        }
+        return rescaleItem(it, it.grams, 'grams', Math.round(it.grams));
       })
     );
   };
 
-  const replaceWithAlternative = (itemId: string, foodId: number) => {
-    const f = OFFLINE_FOODS.find((x) => x.id === foodId);
-    if (!f) return;
+  const stepQuantity = (id: string, delta: number) => {
     setItems((prev) =>
       prev.map((it) => {
-        if (it.id !== itemId) return it;
-        const factor = it.grams / 100;
-        const matched = userAllergies.filter((a) =>
-          f.allergen_tags.some((tag) => tag.toLowerCase().includes(a.toLowerCase()))
-        );
-        return {
-          ...it,
-          food_id: f.id,
-          name_en: f.name_en,
-          name_hi: f.name_hi,
-          calories: Math.round(f.calories_per_100g * factor),
-          protein: Math.round(f.protein_per_100g * factor * 10) / 10,
-          carbs: Math.round(f.carbs_per_100g * factor * 10) / 10,
-          fat: Math.round(f.fat_per_100g * factor * 10) / 10,
-          is_low_confidence: false,
-          confidence: 1.0,
-          allergy_alerts: matched,
-          was_edited_by_user: true,
-        };
+        if (it.id !== id) return it;
+        const mode = it.unit_type || 'grams';
+        if (mode === 'unit') {
+          const curQty = it.quantity_value ?? 1;
+          const nextQty = Math.max(0.5, Math.round((curQty + delta) * 2) / 2);
+          const unitGrams = it.default_unit_grams || 150;
+          return rescaleItem(it, nextQty * unitGrams, 'unit', nextQty);
+        }
+        const nextGrams = Math.max(10, Math.round(it.grams + delta));
+        return rescaleItem(it, nextGrams, 'grams', nextGrams);
       })
     );
+  };
+
+  const applyRenameAndRematch = async (itemId: string) => {
+    const newName = renameText.trim();
+    if (!newName) return;
+    setRematching(true);
+    try {
+      const target = items.find((x) => x.id === itemId);
+      const calc = await calculateNutrientsFromBackend({
+        detected_output: {
+          image_scope: 'single_item',
+          items: [{ name: newName, confidence: 'high', visible_toppings: [] }],
+        },
+        user_quantities: target
+          ? {
+              [newName]: {
+                quantity: target.unit_type === 'unit' ? target.quantity_value || 1 : target.grams,
+                unit_type: target.unit_type === 'unit' ? 'piece' : 'grams',
+              },
+            }
+          : undefined,
+        user_allergies: userAllergies,
+      });
+      if (calc.items[0]) {
+        const updated = { ...calc.items[0], id: itemId, was_edited_by_user: true };
+        setItems((prev) => prev.map((it) => (it.id === itemId ? updated : it)));
+      }
+    } finally {
+      setRematching(false);
+      setEditingId(null);
+      setRenameText('');
+    }
   };
 
   const removeItem = (id: string) => setItems((prev) => prev.filter((it) => it.id !== id));
@@ -121,7 +167,6 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
       navigation.navigate('MainTabs');
     };
 
-    // Section 12: High calorie entry double-check
     if (totals.calories > 1600) {
       Alert.alert(
         'High Calorie Entry',
@@ -140,9 +185,11 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.heading, { color: colors.text }]}>{t('reviewMeal')}</Text>
 
-      <BoundingBoxOverlay photoUri={photoUri} items={items} />
+      {photoUri ? (
+        <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="cover" />
+      ) : null}
 
-      {/* Red Allergy Warning Banner (Section 4 #16) */}
+      {/* Red Allergy Warning Banner */}
       {allergyMatches.length > 0 && (
         <View style={[styles.allergyBanner, { backgroundColor: colors.danger }]}>
           <Ionicons name="warning" size={22} color="#FFF" />
@@ -168,56 +215,142 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
         ))}
       </View>
 
-      {/* Detected Food Items */}
-      {items.map((item) => (
-        <Card key={item.id} style={item.is_low_confidence ? { borderColor: colors.warning, borderWidth: 1.5 } : undefined}>
-          <View style={styles.itemTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
-                {lang === 'hi' && item.name_hi ? item.name_hi : item.name_en}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}>
-                {item.grams} g • {item.calories} kcal (P {item.protein}g • C {item.carbs}g • F {item.fat}g)
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.iconTouch}>
-              <Ionicons name="close-circle-outline" size={24} color={colors.danger} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Quantity +/- Controls */}
-          <View style={styles.qtyRow}>
-            <TouchableOpacity onPress={() => adjustGrams(item.id, -25)} style={[styles.qtyBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontWeight: '800' }}>-25 g</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => adjustGrams(item.id, 25)} style={[styles.qtyBtn, { borderColor: colors.border }]}>
-              <Text style={{ color: colors.text, fontWeight: '800' }}>+25 g</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Low Confidence "Not sure" alternatives (Section 5.4) */}
-          {item.is_low_confidence && item.alternatives && item.alternatives.length > 0 && (
-            <View style={{ marginTop: 10 }}>
-              <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 6 }}>
-                {t('notSure')} ({Math.round(item.confidence * 100)}%) — Tap to replace:
-              </Text>
-              <View style={styles.altRow}>
-                {item.alternatives.map((alt) => (
-                  <TouchableOpacity
-                    key={alt.food_id}
-                    onPress={() => replaceWithAlternative(item.id, alt.food_id)}
-                    style={[styles.altChip, { backgroundColor: colors.accent }]}
-                  >
-                    <Text style={{ color: colors.primaryDark, fontSize: 12, fontWeight: '700' }}>
-                      {lang === 'hi' ? alt.name_hi : alt.name_en}
+      {/* Detected Food Items & Visible Toppings */}
+      {items.map((item) => {
+        const mode = item.unit_type || 'grams';
+        const unitLabel = item.default_unit_name || 'piece';
+        const isEditing = editingId === item.id;
+        return (
+          <Card
+            key={item.id}
+            style={
+              item.status === 'unmatched' || item.is_low_confidence
+                ? { borderColor: colors.warning, borderWidth: 1.5 }
+                : undefined
+            }
+          >
+            <View style={styles.itemTop}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.badgeRow}>
+                  {item.is_topping && (
+                    <Text style={[styles.badge, { backgroundColor: colors.accent, color: colors.primaryDark }]}>
+                      Topping
                     </Text>
-                  </TouchableOpacity>
-                ))}
+                  )}
+                  {item.status === 'unmatched' && (
+                    <Text style={[styles.badge, { backgroundColor: colors.warning, color: '#FFF' }]}>
+                      Unmatched — tap Rename
+                    </Text>
+                  )}
+                  {item.confidence_label === 'low' && (
+                    <Text style={[styles.badge, { backgroundColor: colors.warning, color: '#FFF' }]}>
+                      {t('notSure')}
+                    </Text>
+                  )}
+                </View>
+
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>
+                  {lang === 'hi' && item.name_hi ? item.name_hi : item.name_en}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                  {item.weight_label || `${item.grams}g`} • {item.calories} kcal (P {item.protein}g • C {item.carbs}g • F {item.fat}g)
+                </Text>
+                {item.source_db ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                    Source: {item.source_db} • 1 {unitLabel} = {item.default_unit_grams || 150}g
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.itemIcons}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditingId(isEditing ? null : item.id);
+                    setRenameText(item.input_name || item.name_en);
+                  }}
+                  style={styles.iconTouch}
+                  accessibilityLabel="Rename item"
+                >
+                  <Ionicons name="create-outline" size={22} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => removeItem(item.id)} style={styles.iconTouch} accessibilityLabel="Delete item">
+                  <Ionicons name="close-circle-outline" size={24} color={colors.danger} />
+                </TouchableOpacity>
               </View>
             </View>
-          )}
-        </Card>
-      ))}
+
+            {/* Inline Rename & Re-match Box */}
+            {isEditing && (
+              <View style={styles.renameBox}>
+                <TextInput
+                  placeholder="Enter dish name (e.g. Chana Masala, Poori)"
+                  placeholderTextColor={colors.textMuted}
+                  value={renameText}
+                  onChangeText={setRenameText}
+                  style={[styles.renameInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                />
+                <TouchableOpacity
+                  onPress={() => applyRenameAndRematch(item.id)}
+                  disabled={rematching}
+                  style={[styles.rematchBtn, { backgroundColor: colors.primary }]}
+                >
+                  {rematching ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Match</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Unit Mode Toggle: Grams vs Default Unit / Piece */}
+            <View style={styles.unitToggleRow}>
+              <TouchableOpacity
+                onPress={() => toggleUnitMode(item.id, 'grams')}
+                style={[
+                  styles.unitBtn,
+                  { backgroundColor: mode === 'grams' ? colors.primary : colors.background, borderColor: colors.border },
+                ]}
+              >
+                <Text style={{ color: mode === 'grams' ? '#FFF' : colors.text, fontWeight: '700', fontSize: 12 }}>
+                  Grams ({Math.round(item.grams)}g)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => toggleUnitMode(item.id, 'unit')}
+                style={[
+                  styles.unitBtn,
+                  { backgroundColor: mode === 'unit' ? colors.primary : colors.background, borderColor: colors.border },
+                ]}
+              >
+                <Text style={{ color: mode === 'unit' ? '#FFF' : colors.text, fontWeight: '700', fontSize: 12 }}>
+                  {mode === 'unit' ? `${item.quantity_value ?? 1} × ${unitLabel}` : `By ${unitLabel}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quantity +/- Controls */}
+            <View style={styles.qtyRow}>
+              <TouchableOpacity
+                onPress={() => stepQuantity(item.id, mode === 'unit' ? -0.5 : -25)}
+                style={[styles.qtyBtn, { borderColor: colors.border }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '800' }}>
+                  {mode === 'unit' ? '-0.5' : '-25 g'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => stepQuantity(item.id, mode === 'unit' ? 0.5 : 25)}
+                style={[styles.qtyBtn, { borderColor: colors.border }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '800' }}>
+                  {mode === 'unit' ? '+0.5' : '+25 g'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        );
+      })}
 
       <PrimaryButton
         title={t('addMissingItem')}
@@ -256,16 +389,23 @@ export const ReviewMealScreen: React.FC<{ route: any; navigation: any }> = ({ ro
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 16, paddingTop: 48, paddingBottom: 40 },
   heading: { fontSize: 22, fontWeight: '800', marginBottom: 12 },
+  photo: { width: '100%', height: 210, borderRadius: 16, marginBottom: 14 },
   allergyBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, marginBottom: 12 },
   allergyText: { color: '#FFF', fontWeight: '800', flex: 1, fontSize: 13 },
   catRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   catBtn: { flex: 1, minHeight: 38, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   itemTop: { flexDirection: 'row', alignItems: 'flex-start' },
+  badgeRow: { flexDirection: 'row', gap: 6, marginBottom: 4 },
+  badge: { fontSize: 10, fontWeight: '800', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
+  itemIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   iconTouch: { padding: 4 },
-  qtyRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  renameBox: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  renameInput: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, fontSize: 14 },
+  rematchBtn: { minHeight: 42, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  unitToggleRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  unitBtn: { flex: 1, minHeight: 38, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  qtyRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   qtyBtn: { flex: 1, minHeight: 40, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  altRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  altChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   favToggle: { flexDirection: 'row', alignItems: 'center', marginTop: 10, minHeight: 36 },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
 });

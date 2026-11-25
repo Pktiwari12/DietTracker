@@ -29,14 +29,14 @@ export const RegisterScreen: React.FC<{ navigation: any }> = ({ navigation }) =>
       <Text style={[styles.sub, { color: colors.textMuted }]}>Start tracking your meals with a single photo.</Text>
 
       <TextInput
-        placeholder="Full Name"
+        placeholder="e.g. Aman"
         placeholderTextColor={colors.textMuted}
         value={name}
         onChangeText={setName}
         style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
       />
       <TextInput
-        placeholder="Email or Phone number"
+        placeholder="e.g. name@example.com or +91 9876543210"
         placeholderTextColor={colors.textMuted}
         value={identifier}
         onChangeText={setIdentifier}

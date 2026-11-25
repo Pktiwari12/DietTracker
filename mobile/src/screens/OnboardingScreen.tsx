@@ -135,13 +135,13 @@ export const OnboardingScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             {renderSingle(['Male', 'Female', 'Prefer not to say'], form.sex, (v) => setField('sex', v as any))}
 
             <Text style={[styles.qLabel, { color: colors.text }]}>Q4. Which country do you live in?</Text>
-            <TextInput value={form.country} onChangeText={(v) => setField('country', v)} placeholder="India" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
+            <TextInput value={form.country} onChangeText={(v) => setField('country', v)} placeholder="e.g. India" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
 
             <Text style={[styles.qLabel, { color: colors.text }]}>Q5. Height (cm) *</Text>
-            <TextInput value={form.height_cm} onChangeText={(v) => setField('height_cm', v)} keyboardType="numeric" placeholder="170" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
+            <TextInput value={form.height_cm} onChangeText={(v) => setField('height_cm', v)} keyboardType="numeric" placeholder="e.g. 170" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
 
             <Text style={[styles.qLabel, { color: colors.text }]}>Q6. Current weight (kg) *</Text>
-            <TextInput value={form.weight_kg} onChangeText={(v) => setField('weight_kg', v)} keyboardType="numeric" placeholder="70" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
+            <TextInput value={form.weight_kg} onChangeText={(v) => setField('weight_kg', v)} keyboardType="numeric" placeholder="e.g. 70" placeholderTextColor={colors.textMuted} style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]} />
           </>
         )}
 

@@ -13,11 +13,11 @@ const STORAGE_KEY = '@informeddiet_state_v1';
 
 const DEFAULT_ONBOARDING: OnboardingAnswers = {
   name: '',
-  age: '28',
+  age: '',
   sex: '',
-  country: 'India',
-  height_cm: '170',
-  weight_kg: '70',
+  country: '',
+  height_cm: '',
+  weight_kg: '',
   primary_goal: 'Improve overall health',
   secondary_goals: [],
   target_weight: '',

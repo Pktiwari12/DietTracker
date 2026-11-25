@@ -18,8 +18,12 @@ __pycache__/
 backend/.env
 backend/uploads/
 backend/runs/
+backend/models/
 *.onnx
 *.pt
+*.safetensors
+*.bin
+.cache/
 
 # --- Node / React Native / Expo Mobile ---
 node_modules/

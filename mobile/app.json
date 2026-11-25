@@ -38,7 +38,8 @@
         }
       ],
       "expo-notifications",
-      "expo-asset"
+      "expo-asset",
+      "expo-web-browser"
     ]
   }
 }

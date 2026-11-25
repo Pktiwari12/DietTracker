@@ -13,7 +13,7 @@ export const ExerciseScreen: React.FC = () => {
   const colors = useTheme();
   const { exerciseLogs, addExercise, deleteExercise } = useApp();
   const [activity, setActivity] = useState('Walking');
-  const [duration, setDuration] = useState('30');
+  const [duration, setDuration] = useState('');
   const [intensity, setIntensity] = useState<'Light' | 'Moderate' | 'Vigorous'>('Moderate');
 
   const todayLogs = exerciseLogs.filter((e) => isSameLocalDay(e.logged_at));
@@ -59,6 +59,8 @@ export const ExerciseScreen: React.FC = () => {
         <TextInput
           value={duration}
           onChangeText={setDuration}
+          placeholder="e.g. 30"
+          placeholderTextColor={colors.textMuted}
           keyboardType="number-pad"
           style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
         />

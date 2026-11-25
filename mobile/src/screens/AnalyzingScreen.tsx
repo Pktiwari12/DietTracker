@@ -3,44 +3,56 @@ import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useApp } from '../context/AppContext';
 import { useTranslation } from '../i18n/useTranslation';
-import { analyzeMealPhoto } from '../config/api';
+import { calculateNutrientsFromBackend, identifyFoodPhoto } from '../config/api';
 import { MealCategory } from '../types';
 
 export const AnalyzingScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const colors = useTheme();
   const { t } = useTranslation();
-  const { session, userAllergies } = useApp();
+  const { userAllergies } = useApp();
   const { photoUri, mealType }: { photoUri?: string; mealType: MealCategory } = route.params || { mealType: 'Lunch' };
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       const start = Date.now();
-      const result = await analyzeMealPhoto(photoUri || '', mealType, session.token, userAllergies);
+      // Step 1: Identify food items & visible toppings via Qwen3-VL (/api/identify-food)
+      const { detected, usedBackend } = await identifyFoodPhoto(photoUri || '', mealType);
+
+      // Step 2: Deterministic nutrition lookup from master_nutrition.csv (/api/calculate-nutrients)
+      const calc = await calculateNutrientsFromBackend({
+        detected_output: detected,
+        fallback_grams: 100,
+        user_allergies: userAllergies,
+      });
+
       const elapsed = Date.now() - start;
-      if (elapsed < 900) {
-        await new Promise((r) => setTimeout(r, 900 - elapsed));
+      if (elapsed < 800) {
+        await new Promise((r) => setTimeout(r, 800 - elapsed));
       }
       if (mounted) {
         navigation.replace('ReviewMeal', {
           photoUri,
           mealType,
-          initialItems: result.items,
-          usedBackend: result.usedBackend,
+          detectedOutput: detected,
+          initialItems: calc.items,
+          usedBackend: usedBackend && calc.usedBackend,
         });
       }
     })();
     return () => {
       mounted = false;
     };
-  }, [photoUri, mealType, navigation, session.token, userAllergies]);
+  }, [photoUri, mealType, navigation, userAllergies]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {photoUri ? <Image source={{ uri: photoUri }} style={styles.preview} /> : null}
       <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} />
       <Text style={[styles.title, { color: colors.text }]}>{t('identifyingFood')}</Text>
-      <Text style={{ color: colors.textMuted, marginTop: 6 }}>Estimating portions & nutrition...</Text>
+      <Text style={{ color: colors.textMuted, marginTop: 6 }}>
+        Identifying dishes & matching master nutrition database...
+      </Text>
     </View>
   );
 };

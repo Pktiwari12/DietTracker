@@ -9,8 +9,10 @@ reportlab==4.2.5
 pyjwt==2.10.1
 pytest==8.3.4
 httpx==0.28.1
-# Optional production dependencies (uncomment when deploying with PostgreSQL, Firebase, or GPU YOLO):
+pandas==2.2.3
+numpy==1.26.4
+sentence-transformers==3.3.1
+# Optional GPU / production dependencies (Linux CUDA server only for local_unsloth):
 # psycopg2-binary==2.9.10
 # firebase-admin==6.6.0
-# ultralytics==8.3.50
-# boto3==1.35.90
+# unsloth

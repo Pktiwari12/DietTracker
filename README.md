@@ -2,7 +2,7 @@
 
 ## 1. Folder & File Placement (`DietTracker/`)
 
-Extract the provided zip archive directly into your existing `DietTracker` folder so it has the following structure:
+Extract the zip archive directly into your existing `DietTracker` folder so it has the following structure:
 
 | Path inside `DietTracker/` | Purpose |
 | --- | --- |
